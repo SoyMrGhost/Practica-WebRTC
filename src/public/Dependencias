@@ -2,4 +2,4 @@ Dependencias
 npm install socket.io express
 npm install nodemon -
 -----------------------------------
-ngrok
+ngrok // Esto lo utilize para abrir el puerto 3000 en local
