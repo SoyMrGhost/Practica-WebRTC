@@ -1,0 +1,5 @@
+Dependencias 
+npm install socket.io express
+npm install nodemon -
+-----------------------------------
+ngrok

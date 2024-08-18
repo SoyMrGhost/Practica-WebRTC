@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videollamada WebRTC</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="./css/styles.css">
+
+</head>
+<body>
+    <h1>Discordtec</h1>
+    
+    <div id="user-info">
+        <input type="text" id="user-name" placeholder="Tu nombre">
+        <button id="start-call">Iniciar Llamada</button>
+    </div>
+
+    <div class="control-buttons">
+        <button id="toggle-video" class="control-button">Desactivar Video</button>
+        <button id="toggle-audio" class="control-button">Desactivar Audio</button>
+    </div>
+
+    <div id="video-container">
+        <div class="video-section">
+            <video id="local-video" autoplay muted></video>
+            <p id="local-user-label">Usuario: No Conectado</p>
+        </div>
+        <div class="video-section">
+            <video id="remote-video" autoplay></video>
+            <p id="remote-user-label">Conectado con: No Conectado</p>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const localVideo = document.getElementById('local-video');
+        const remoteVideo = document.getElementById('remote-video');
+        const localUserLabel = document.getElementById('local-user-label');
+        const remoteUserLabel = document.getElementById('remote-user-label');
+        const userNameInput = document.getElementById('user-name');
+        const toggleVideoButton = document.getElementById('toggle-video');
+        const toggleAudioButton = document.getElementById('toggle-audio');
+        let localStream;
+        let pc;
+
+        const servers = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        async function startCall() {
+            const userName = userNameInput.value || "Anónimo";
+            localUserLabel.innerText = `Usuario: ${userName}`;
+            
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+
+            pc = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('candidate', event.candidate);
+                }
+            };
+
+            pc.ontrack = event => {
+                if (event.streams && event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('offer', { offer, userName });
+        }
+
+        socket.on('offer', async data => {
+            remoteUserLabel.innerText = `Conectado con: ${data.userName}`;
+            
+            if (!pc) {
+                pc = new RTCPeerConnection(servers);
+
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('candidate', event.candidate);
+                    }
+                };
+
+                pc.ontrack = event => {
+                    if (event.streams && event.streams[0]) {
+                        remoteVideo.srcObject = event.streams[0];
+                    }
+                };
+            }
+
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        socket.on('answer', answer => {
+            pc.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on('candidate', candidate => {
+            pc.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        toggleVideoButton.addEventListener('click', () => {
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack.enabled) {
+                videoTrack.enabled = false;
+                toggleVideoButton.innerText = 'Activar Video';
+            } else {
+                videoTrack.enabled = true;
+                toggleVideoButton.innerText = 'Desactivar Video';
+            }
+        });
+
+        toggleAudioButton.addEventListener('click', () => {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack.enabled) {
+                audioTrack.enabled = false;
+                toggleAudioButton.innerText = 'Activar Audio';
+            } else {
+                audioTrack.enabled = true;
+                toggleAudioButton.innerText = 'Desactivar Audio';
+            }
+        });
+
+        document.getElementById('start-call').addEventListener('click', startCall);
+    </script>
+</body>
+</html>
